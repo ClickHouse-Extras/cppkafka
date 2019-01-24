@@ -298,17 +298,33 @@ void Consumer::commit(const TopicPartitionList* topic_partitions, bool async) {
 
 void Consumer::handle_rebalance(rd_kafka_resp_err_t error,
                                 TopicPartitionList& topic_partitions) {
-    if (error == RD_KAFKA_RESP_ERR__ASSIGN_PARTITIONS) {
-        CallbackInvoker<AssignmentCallback>("assignment", assignment_callback_, this)(topic_partitions);
-        assign(topic_partitions);
-    }
-    else if (error == RD_KAFKA_RESP_ERR__REVOKE_PARTITIONS) {
-        CallbackInvoker<RevocationCallback>("revocation", revocation_callback_, this)(topic_partitions);
-        unassign();
-    }
-    else {
-        CallbackInvoker<RebalanceErrorCallback>("rebalance error", rebalance_error_callback_, this)(error);
-        unassign();
+    try {
+        if (error == RD_KAFKA_RESP_ERR__ASSIGN_PARTITIONS) {
+            CallbackInvoker<AssignmentCallback>("assignment", assignment_callback_, this)(topic_partitions);
+            assign(topic_partitions);
+        }
+        else if (error == RD_KAFKA_RESP_ERR__REVOKE_PARTITIONS) {
+            CallbackInvoker<RevocationCallback>("revocation", revocation_callback_, this)(topic_partitions);
+            unassign();
+        }
+        else {
+            CallbackInvoker<RebalanceErrorCallback>("rebalance error", rebalance_error_callback_, this)(error);
+            unassign();
+        }
+    } catch (const HandleException& ex) {
+        ostringstream error_msg;
+        error_msg << "Failed to handle rebalance [" << get_name() << "]: " << ex.what();
+        CallbackInvoker<Configuration::ErrorCallback> error_cb("error", get_configuration().get_error_callback(), this);
+        CallbackInvoker<Configuration::LogCallback> logger_cb("log", get_configuration().get_log_callback(), nullptr);
+        if (error_cb) {
+            error_cb(*this, static_cast<int>(ex.get_error().get_error()), error_msg.str());
+        }
+        else if (logger_cb) {
+            logger_cb(*this, static_cast<int>(LogLevel::LogErr), "cppkafka", error_msg.str());
+        }
+        else {
+            rd_kafka_log_print(get_handle(), static_cast<int>(LogLevel::LogErr), "cppkafka", error_msg.str().c_str());
+        }
     }
 }
 
