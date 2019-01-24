@@ -201,7 +201,7 @@ public:
     }
 #endif
 
-#if (RD_KAFKA_VERSION >= RD_KAFKA_MESSAGE_STATUS_SUPPORT_VERSION)
+#if (RD_KAFKA_VERSION > RD_KAFKA_MESSAGE_STATUS_SUPPORT_VERSION)
     /**
      * \brief Gets the message persistence status
      */
