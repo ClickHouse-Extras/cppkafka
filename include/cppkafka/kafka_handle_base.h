@@ -262,6 +262,34 @@ public:
      */
     int get_out_queue_length() const;
 
+#if RD_KAFKA_VERSION >= RD_KAFKA_DESTROY_FLAGS_SUPPORT_VERSION
+    /**
+     * \brief Sets destroy_flags
+     *
+     * Destroy flags will be used for handle destruction.
+     *
+     * Single values: 0 (Default), RD_KAFKA_DESTROY_F_NO_CONSUMER_CLOSE
+     *
+     * Setting to RD_KAFKA_DESTROY_F_NO_CONSUMER_CLOSE prevents potential
+     * hang during termination if consumer.close() is failing because
+     * of queued callback calls.
+     *  Refs:
+     * https://github.com/edenhill/librdkafka/blob/7269f0c6a225cd42dc7a44c5e081c464986d20ff/tests/0084-destroy_flags.c#L69
+     * https://github.com/edenhill/librdkafka/issues/2077
+     */
+     void set_destroy_flags(int destroy_flags) {
+         destroy_flags_ = destroy_flags;
+     };
+
+    /**
+     * \brief Returns destroy_flags
+     *
+     */
+     int get_destroy_flags() const {
+         return destroy_flags_;
+     };
+
+#endif
     /**
      * \brief Cancels the current callback dispatcher
      *
@@ -279,20 +307,21 @@ protected:
 private:
     static const std::chrono::milliseconds DEFAULT_TIMEOUT;
 
-    struct handle_deleter {
-        void operator()(rd_kafka_t* handle) {
-            // All the consumer objects created by cppkafka
-            // call rd_kafka_consumer_close during destruction.
-            // So we don't want it to be called once again
-            // during handle destruction.
+    // It seems that destroy_flags maybe RD_KAFKA_DESTROY_F_NO_CONSUMER_CLOSE by default.
+    //
+    // All the consumer objects created by cppkafka call rd_kafka_consumer_close during destruction.
+    // So we don't want it to be called once again during handle destruction.
+    int destroy_flags_ = 0;
 
-            // That prevents potential hang during termination
-            // if consumer.close() is failing because of
-            // queued callback calls.
-            // Refs:
-            // https://github.com/edenhill/librdkafka/blob/7269f0c6a225cd42dc7a44c5e081c464986d20ff/tests/0084-destroy_flags.c#L69
-            // https://github.com/edenhill/librdkafka/issues/2077
-            rd_kafka_destroy_flags(handle, RD_KAFKA_DESTROY_F_NO_CONSUMER_CLOSE);
+    struct handle_deleter {
+        handle_deleter(const KafkaHandleBase * handle_base_ptr) : handle_base_ptr_{handle_base_ptr} {};
+        const KafkaHandleBase * handle_base_ptr_;
+        void operator()(rd_kafka_t* handle) {
+#if RD_KAFKA_VERSION >= RD_KAFKA_DESTROY_FLAGS_SUPPORT_VERSION
+            rd_kafka_destroy_flags(handle, handle_base_ptr_->get_destroy_flags());
+#else
+            rd_kafka_destroy(handle);
+#endif
         }
     };
 
