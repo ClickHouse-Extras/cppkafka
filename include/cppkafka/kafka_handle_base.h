@@ -279,7 +279,24 @@ protected:
 private:
     static const std::chrono::milliseconds DEFAULT_TIMEOUT;
 
-    using HandlePtr = std::unique_ptr<rd_kafka_t, decltype(&rd_kafka_destroy)>;
+    struct handle_deleter {
+        void operator()(rd_kafka_t* handle) {
+            // All the consumer objects created by cppkafka
+            // call rd_kafka_consumer_close during destruction.
+            // So we don't want it to be called once again
+            // during handle destruction.
+
+            // That prevents potential hang during termination
+            // if consumer.close() is failing because of
+            // queued callback calls.
+            // Refs:
+            // https://github.com/edenhill/librdkafka/blob/7269f0c6a225cd42dc7a44c5e081c464986d20ff/tests/0084-destroy_flags.c#L69
+            // https://github.com/edenhill/librdkafka/issues/2077
+            rd_kafka_destroy_flags(handle, RD_KAFKA_DESTROY_F_NO_CONSUMER_CLOSE);
+        }
+    };
+
+    using HandlePtr = std::unique_ptr<rd_kafka_t, handle_deleter>;
     using TopicConfigurationMap = std::unordered_map<std::string, TopicConfiguration>;
 
     Topic get_topic(const std::string& name, rd_kafka_topic_conf_t* conf);
