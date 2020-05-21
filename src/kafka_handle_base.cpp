@@ -251,4 +251,25 @@ rd_kafka_conf_t* KafkaHandleBase::get_configuration_handle() {
     return config_.get_handle();
 }
 
+#if RD_KAFKA_VERSION >= RD_KAFKA_DESTROY_FLAGS_SUPPORT_VERSION
+
+void KafkaHandleBase::set_destroy_flags(int destroy_flags) {
+    destroy_flags_ = destroy_flags;
+};
+
+int KafkaHandleBase::get_destroy_flags() const {
+    return destroy_flags_;
+};
+
+#endif
+
+
+void KafkaHandleBase::handle_deleter::operator()(rd_kafka_t* handle) {
+#if RD_KAFKA_VERSION >= RD_KAFKA_DESTROY_FLAGS_SUPPORT_VERSION
+    rd_kafka_destroy_flags(handle, handle_base_ptr_->get_destroy_flags());
+#else
+    rd_kafka_destroy(handle);
+#endif
+}
+
 } // cppkafka
